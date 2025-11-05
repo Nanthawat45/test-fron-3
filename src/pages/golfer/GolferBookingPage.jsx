@@ -10,8 +10,11 @@ import { calculateTotalPrice } from "../../service/calculatePrice";
 import StripeService from "../../service/stripeService";
 import Navbar from "../../components/golfer/Navbar";
 
+const STEP_KEY = "bookingCurrentStep";
+const DRAFT_KEY = "bookingDraft";
+const PREVIEW_KEY = "bookingPreview";
+
 const formatDate = (dateLike) => {
-  // รับได้ทั้ง Date หรือ string แล้วบังคับให้ออกเป็น YYYY-MM-DD เสมอ
   const d = new Date(dateLike);
   if (Number.isNaN(d.getTime())) return "";
   const y = d.getFullYear();
@@ -24,7 +27,14 @@ export default function GolferBookingPage() {
   const [params] = useSearchParams();
   const cancelled = params.get("cancelled") === "1";
 
-  const [currentStep, setCurrentStep] = useState(1);
+  // ลอง restore step ถ้าเคยเซฟไว้ ไม่งั้นเริ่มที่ 1
+  const initialStep = (() => {
+    const raw = sessionStorage.getItem(STEP_KEY);
+    const n = raw ? Number(raw) : 1;
+    return Number.isFinite(n) && n >= 1 && n <= 4 ? n : 1;
+  })();
+
+  const [currentStep, setCurrentStep] = useState(initialStep);
   const [notice, setNotice] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -40,14 +50,13 @@ export default function GolferBookingPage() {
     totalPrice: 0,
   });
 
-  // ---------- คืนค่า draft เมื่อยกเลิกชำระเงิน ----------
+  // ---------- กดยกเลิกการจ่ายเงิน: กู้ draft และกระโดดไป Step4 ----------
   useEffect(() => {
     if (!cancelled) return;
-    const raw = sessionStorage.getItem("bookingDraft");
+    const raw = sessionStorage.getItem(DRAFT_KEY);
     if (raw) {
       try {
         const draft = JSON.parse(raw);
-        // บังคับ format date อีกครั้งกันเพี้ยน
         draft.date = formatDate(draft.date);
         setBookingData(draft);
         setNotice("คุณยกเลิกการชำระเงิน ข้อมูลเดิมถูกกู้คืนให้แล้ว");
@@ -57,9 +66,12 @@ export default function GolferBookingPage() {
     } else {
       setNotice("คุณยกเลิกการชำระเงิน");
     }
+    // ✅ กลับมาหน้า Step4 เลยตามที่ขอ
+    setCurrentStep(4);
+    sessionStorage.setItem(STEP_KEY, "4");
   }, [cancelled]);
 
-  // ---------- อัปเดตราคารวมอัตโนมัติ ----------
+  // ---------- คำนวณราคารวมอัตโนมัติ ----------
   useEffect(() => {
     const total = calculateTotalPrice(bookingData);
     if (bookingData.totalPrice !== total) {
@@ -75,33 +87,35 @@ export default function GolferBookingPage() {
     bookingData.golfBagQty,
   ]);
 
-  // ---------- ออโต้เซฟร่างทุกครั้งที่ผู้ใช้แก้ไข ----------
+  // ---------- ออโต้เซฟ draft + step ทุกครั้งที่แก้ ----------
   useEffect(() => {
     try {
       const snapshot = { ...bookingData, date: formatDate(bookingData.date) };
-      sessionStorage.setItem("bookingDraft", JSON.stringify(snapshot));
-    } catch {
-      /* ignore */
-    }
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(snapshot));
+    } catch {}
   }, [bookingData]);
 
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(STEP_KEY, String(currentStep));
+    } catch {}
+  }, [currentStep]);
+
+  // ---------- handleChange ----------
   const handleChange = (e) => {
     const { name, value } = e.target;
-    // ฟิลด์ตัวเลข
     if (["players", "golfCartQty", "golfBagQty"].includes(name)) {
       setBookingData((prev) => ({ ...prev, [name]: parseInt(value || 0) }));
       return;
     }
-    // วันที่
     if (name === "date") {
       setBookingData((prev) => ({ ...prev, date: formatDate(value) }));
       return;
     }
-    // ทั่วไป
     setBookingData((prev) => ({ ...prev, [name]: value }));
   };
 
-  // ---------- กดชำระเงิน → สร้าง session → ไป Stripe ----------
+  // ---------- ชำระเงิน ----------
   const handleSubmitBooking = async () => {
     try {
       setIsLoading(true);
@@ -113,10 +127,10 @@ export default function GolferBookingPage() {
         totalPrice: calculateTotalPrice(bookingData),
       };
 
-      // เก็บร่าง/พรีวิวก่อนออกไป Stripe (เผื่อยกเลิกจะกู้คืน)
-      sessionStorage.setItem("bookingDraft", JSON.stringify(payload));
+      // เก็บก่อนออกไป Stripe
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
       sessionStorage.setItem(
-        "bookingPreview",
+        PREVIEW_KEY,
         JSON.stringify({
           ...payload,
           price: { total: payload.totalPrice },
@@ -126,9 +140,7 @@ export default function GolferBookingPage() {
       const resp = await StripeService.createCheckout(payload);
       const data = resp?.data ?? resp;
       const paymentUrl = data?.paymentUrl || data?.url;
-      if (!paymentUrl) {
-        throw new Error(data?.message || "ไม่พบลิงก์ชำระเงินจากเซิร์ฟเวอร์");
-      }
+      if (!paymentUrl) throw new Error(data?.message || "ไม่พบลิงก์ชำระเงินจากเซิร์ฟเวอร์");
 
       window.location.assign(paymentUrl);
     } catch (err) {
