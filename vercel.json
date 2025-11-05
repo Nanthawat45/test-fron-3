@@ -1,5 +1,8 @@
 {
-  "buildCommand": "npm run build",
   "framework": "vite",
-  "outputDirectory": "dist"
+  "outputDirectory": "dist",
+  "env": {
+    "ROLLUP_DISABLE_NATIVE": "1"
+  },
+  "buildCommand": "ROLLUP_DISABLE_NATIVE=1 vite build"
 }
