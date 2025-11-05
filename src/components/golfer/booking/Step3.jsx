@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import LoadingAnimation from "../../golfer/animations/LoadingAnimation";
-import CaddyService from "../../../service/CaddyService";
+import CaddyService from "../../../service/caddyService";
 
 /* ---------- helpers ---------- */
 const HOLD_KEY = (d, t, ct) => `caddy-holds:${d || "none"}:${t || "none"}:${ct || "none"}`;

@@ -5,7 +5,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import DatePicker, { registerLocale } from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import th from "date-fns/locale/th";
-import CaddyService from "../../service/CaddyService";
+import CaddyService from "../../service/caddyService";
 import UserService from "../../service/userService";
 
 registerLocale("th", th);

@@ -3,7 +3,7 @@ import Header from "../../components/Caddy/Header";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCheckCircle } from "@fortawesome/free-solid-svg-icons";
 import { useNavigate, useLocation } from "react-router-dom";
-import CaddyService from "../../service/CaddyService"; // ✅ ใช้ Service ที่ล็อกไว้แล้ว
+import CaddyService from "../../service/caddyService"; // ✅ ใช้ Service ที่ล็อกไว้แล้ว
 
 const ProcessGolfPage = () => {
   const [step, setStep] = useState(1);
