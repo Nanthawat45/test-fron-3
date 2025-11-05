@@ -1,12 +1,11 @@
+// src/pages/golfer/CheckoutSuccess.jsx
 import { useEffect, useState } from "react";
 import StripeService from "../../service/stripeService.js";
 
 /** คืน 'YYYY-MM-DD' ภาษาไทย (แสดงผลเท่านั้น) */
 function toThaiDate(d) {
   if (!d) return "-";
-  try { return new Date(d).toLocaleDateString("th-TH"); } 
-  // eslint-disable-next-line no-empty
-  catch {}
+  try { return new Date(d).toLocaleDateString("th-TH"); } catch {}
 }
 
 /** ดึง body จาก axios หรืออ็อบเจ็กต์เดิม */
@@ -31,28 +30,63 @@ export default function CheckoutSuccess() {
   const [preview, setPreview] = useState(null);
 
   useEffect(() => {
-    // โหลด snapshot จาก Step4 เพื่อแสดงทันที (ไม่ใช่ hook เพิ่มเติม)
+    // โหลด snapshot จาก Step4 เพื่อแสดงทันที (ให้ผู้ใช้เห็นข้อมูลไวๆ)
     const raw = sessionStorage.getItem("bookingPreview");
     if (raw) {
-      try { setPreview(JSON.parse(raw)); } 
-      // eslint-disable-next-line no-empty
-      catch {}
+      try { setPreview(JSON.parse(raw)); } catch {}
     }
 
-    (async () => {
-      try {
-        const sid = StripeService.getSessionIdFromUrl(); // ?session_id=... หรือ ?sessionId=...
-        if (!sid) throw new Error("ไม่พบ session_id ใน URL");
-        const resp = await StripeService.getBookingBySession(sid); // GET /stripe/by-session/:sid
-        setState({ loading: false, data: body(resp), error: "" });
-      } catch (e) {
-        setState({
-          loading: false,
-          data: null,
-          error: e?.response?.data?.message || e.message || "ดึงผลการชำระเงินไม่สำเร็จ",
-        });
+    const sid = StripeService.getSessionIdFromUrl(); // ?session_id=... หรือ ?sessionId=...
+    if (!sid) {
+      setState({ loading: false, data: null, error: "ไม่พบ session_id ใน URL" });
+      return;
+    }
+
+    // ---- กัน race condition: webhook ช้ากว่า redirect ----
+    // จะลองดึงซ้ำสูงสุด 6 ครั้ง ห่างกัน 2 วินาที (รวม ~10-12s)
+    let cancelled = false;
+    const MAX_RETRIES = 6;
+    const DELAY_MS = 2000;
+
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    const fetchWithRetry = async () => {
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const resp = await StripeService.getBookingBySession(sid); // GET /stripe/by-session/:sid (ต้องล็อกอิน)
+          if (cancelled) return;
+          setState({ loading: false, data: body(resp), error: "" });
+          return; // ได้แล้ว ออกเลย
+        } catch (e) {
+          // case พบบ่อย:
+          // 404 -> webhook ยังไม่สร้าง booking
+          // 401 -> ยังไม่ล็อกอิน หรือ cookie/โดเมน CORS ไม่ตรง
+          const status = e?.response?.status;
+          const msg = e?.response?.data?.message || e.message || "ดึงผลการชำระเงินไม่สำเร็จ";
+
+          if (status === 401) {
+            setState({
+              loading: false,
+              data: null,
+              error: "ยังไม่เข้าสู่ระบบ หรือเซสชันหมดอายุ กรุณาเข้าสู่ระบบแล้วกลับมาที่ลิงก์นี้อีกครั้ง",
+            });
+            return;
+          }
+
+          if (status === 404 && attempt < MAX_RETRIES) {
+            await wait(DELAY_MS);
+            continue;
+          }
+
+          setState({ loading: false, data: null, error: msg });
+          return;
+        }
       }
-    })();
+    };
+
+    fetchWithRetry();
+
+    return () => { cancelled = true; };
   }, []);
 
   if (state.loading) {
@@ -70,8 +104,13 @@ export default function CheckoutSuccess() {
       <div className="min-h-[60vh] grid place-items-center bg-neutral-50">
         <div className="max-w-md w-full rounded-2xl bg-white/70 backdrop-blur p-6 ring-1 ring-red-200">
           <p className="text-red-600 text-center">{state.error}</p>
-          <div className="text-center mt-4">
-            <a href="/" className="inline-block rounded-full px-4 py-2 bg-neutral-900 text-white hover:bg-black transition">
+
+          {/* เผื่อ 401 ให้ไปล็อกอินก่อน */}
+          <div className="text-center mt-4 flex items-center justify-center gap-2">
+            <a href="/login" className="inline-block rounded-full px-4 py-2 bg-neutral-900 text-white hover:bg-black transition">
+              เข้าสู่ระบบ
+            </a>
+            <a href="/" className="inline-block rounded-full px-4 py-2 bg-neutral-100 text-neutral-900 hover:bg-neutral-200 transition">
               กลับหน้าหลัก
             </a>
           </div>
@@ -166,13 +205,19 @@ export default function CheckoutSuccess() {
             )}
           </div>
 
-          <div className="mt-8 text-center">
-            <button
-              onClick={() => (window.location.href = "/profile")}
+          <div className="mt-8 text-center flex items-center justify-center gap-2">
+            <a
+              href="/profile"
               className="inline-flex items-center justify-center rounded-full px-5 py-2.5 bg-neutral-900 text-white hover:bg-black transition font-medium"
             >
               ไปยังโปรไฟล์ของฉัน
-            </button>
+            </a>
+            <a
+              href="/booking"
+              className="inline-flex items-center justify-center rounded-full px-5 py-2.5 bg-neutral-100 text-neutral-900 hover:bg-neutral-200 transition font-medium"
+            >
+              จองรอบต่อไป
+            </a>
           </div>
         </section>
       </main>
