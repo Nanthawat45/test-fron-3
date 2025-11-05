@@ -1,8 +1,9 @@
 {
   "framework": "vite",
   "outputDirectory": "dist",
-  "env": {
-    "ROLLUP_DISABLE_NATIVE": "1"
-  },
-  "buildCommand": "ROLLUP_DISABLE_NATIVE=1 vite build"
+  "env": { "ROLLUP_DISABLE_NATIVE": "1" },
+  "buildCommand": "ROLLUP_DISABLE_NATIVE=1 vite build",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/" }
+  ]
 }
